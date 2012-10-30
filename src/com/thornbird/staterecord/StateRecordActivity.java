@@ -8,47 +8,37 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.List;
 
+import android.app.ActivityManager;
+import android.app.ActivityManager.RunningAppProcessInfo;
+import android.app.ActivityManager.RunningTaskInfo;
 import android.app.AlertDialog;
 import android.app.ListActivity;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
-import android.os.SystemClock;
-import android.text.format.DateUtils;
 import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ListAdapter;
 import android.widget.ListView;
-import android.widget.TextView;
 
 public class StateRecordActivity extends ListActivity {
-	private final String TAG="StateRecord";
+	private final String TAG="BbkStateRecord";
 	private static final boolean EnableLog=true;
 	
-	private final static String[] attr = {"Battery log","Task","Process"};
+	private final static String[] attr = {"Battery FG","Battery log","Android Process","kernel process"};
 	
-	private static final int EVENT_TICK = 1;
-	private static final int EVENT_LOG_RECORD = 2;
+	private boolean bat_fg_enable = false;
+	private boolean bat_log_enable = false;
+	private boolean android_process_enable = false;
+	private boolean kernel_process_enable = false;
 	
 	private static final int EVENT_UPDATE = 1;
-	
-    private String mStatus;
-    private int mLevel;
-    private int mScale;
-    private String mHealth;
-    private int mVoltage;
-    private int mTemperature;
-    private String mTechnology;
-    private long mUptime;
-    
+	    
     private Button mLogRecord;
 
     private File mLogFile;
@@ -59,8 +49,6 @@ public class StateRecordActivity extends ListActivity {
     SimpleDateFormat fmt;
     String sysDateTime;
  
-    private int interval = 10000;
-    
     private boolean mIsRecording = false;
     private boolean mRun = false;
 
@@ -68,6 +56,7 @@ public class StateRecordActivity extends ListActivity {
     private String PowerCmdString = null;
     
     private Thread bbkrun;
+    private int mUpdateInterval = 10000; // 10 sec
     
 	/** Called when the activity is first created. */
     @Override
@@ -81,10 +70,7 @@ public class StateRecordActivity extends ListActivity {
         setListAdapter(adapter);
         
         final ListView listView = getListView();
-        listView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
-        
-       
-     
+        listView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);     
         
         mLogRecord = (Button) findViewById(R.id.start);
         if(mLogRecord == null)
@@ -105,100 +91,14 @@ public class StateRecordActivity extends ListActivity {
                         }
 
         }
-        
-        if (ChipSupport.GetChip() == ChipSupport.MTK_6573_SUPPORT) {
-            cmdString = "cat /sys/devices/platform/mt6573-battery/";
-        } else if (ChipSupport.GetChip() == ChipSupport.MTK_6575_SUPPORT) {
-            cmdString = "cat /sys/devices/platform/mt6575-battery/";
-        } else if (ChipSupport.GetChip() == ChipSupport.MTK_6577_SUPPORT) {
-            // 6577 branch
-            cmdString = "cat /sys/devices/platform/mt6577-battery/";
-        } else {
-            cmdString = "";
-        }
 
-        PowerCmdString = "cat /sys/class/power_supply/battery/";
-        
+        cmdString = "cat /sys/devices/platform/mt6577-battery/";
+        PowerCmdString = "cat /sys/class/power_supply/battery/";   
+       
        if(EnableLog)
         	Log.d(TAG,"onCreate!\n");
     }
-   
-    @Override
-    public void onResume()
-    {
-    	super.onResume();    	 
-    	
- 
-             
-    	if(EnableLog)
-        	Log.d(TAG,"onResume!\n");
-    }
-
-    @Override
-    public void onPause() {
-        super.onPause();
-   
-   
-    }
-
-    private BroadcastReceiver mIntentReceiver = new BroadcastReceiver() {
-    	@Override
-    	 public void onReceive(Context arg0, Intent arg1) {
-                // TODO Auto-generated method stub
-                String action = arg1.getAction();
-                if (action.equals(Intent.ACTION_BATTERY_CHANGED)) {
-                	int plugType = arg1.getIntExtra("plugged", 0);
-
-                    mLevel = arg1.getIntExtra("level", 0);
-                    mScale = arg1.getIntExtra("scale", 0);
-                    mVoltage = arg1.getIntExtra("voltage", 0);
-                    mTemperature = arg1.getIntExtra("temperature", 0)/10;
-                    mTechnology = arg1.getStringExtra("technology");
-
-                    int status = arg1.getIntExtra("status", BatteryManager.BATTERY_STATUS_UNKNOWN);
-                    String statusString;
-                    if (status == BatteryManager.BATTERY_STATUS_CHARGING) {
-                        statusString = getString(R.string.battery_info_status_charging);
-                        if (plugType > 0) {
-                            statusString = statusString + " " + getString(
-                                    (plugType == BatteryManager.BATTERY_PLUGGED_AC)
-                                            ? R.string.battery_info_status_charging_ac
-                                            : R.string.battery_info_status_charging_usb);
-                        }
-                    } else if (status == BatteryManager.BATTERY_STATUS_DISCHARGING) {
-                        statusString = getString(R.string.battery_info_status_discharging);
-                    } else if (status == BatteryManager.BATTERY_STATUS_NOT_CHARGING) {
-                        statusString = getString(R.string.battery_info_status_not_charging);
-                    } else if (status == BatteryManager.BATTERY_STATUS_FULL) {
-                        statusString = getString(R.string.battery_info_status_full);
-                    } else {
-                        statusString = getString(R.string.battery_info_status_unknown);
-                    }
-                    mStatus = new String(statusString);
-
-                    int health = arg1.getIntExtra("health", BatteryManager.BATTERY_HEALTH_UNKNOWN);
-                    String healthString;
-                    if (health == BatteryManager.BATTERY_HEALTH_GOOD) {
-                        healthString = getString(R.string.battery_info_health_good);
-                    } else if (health == BatteryManager.BATTERY_HEALTH_OVERHEAT) {
-                        healthString = getString(R.string.battery_info_health_overheat);
-                    } else if (health == BatteryManager.BATTERY_HEALTH_DEAD) {
-                        healthString = getString(R.string.battery_info_health_dead);
-                    } else if (health == BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE) {
-                        healthString = getString(R.string.battery_info_health_over_voltage);
-                    } else if (health == BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE) {
-                        healthString = getString(R.string.battery_info_health_unspecified_failure);
-                    } else {
-                    	  healthString = getString(R.string.battery_info_health_unknown);
-                    }
-                    mHealth = new String(healthString);
-
-                }
-        }		
-    };
-
-    
- 
+  
     public void onButtonClick(View arg0) {
     	 if(arg0.getId() == mLogRecord.getId())
          {
@@ -229,9 +129,7 @@ public class StateRecordActivity extends ListActivity {
                builder.create().show();
                return;
     	 	}    	
-    	
-    	 	 mLogRecord.setText("stop");
-
+    	 	     		
     	 	//Create a new file under the "/sdcard/batterylog" path
     	 	rightNow = Calendar.getInstance();
     	 	fmt = new SimpleDateFormat("yyyyMMddhhmmss");
@@ -247,28 +145,31 @@ public class StateRecordActivity extends ListActivity {
     	 	mLogFile = new File("/sdcard/bbkstatelog/" + fileName);
     	 	try {
                 mLogFile.createNewFile();
-                String BatteryInfoLable = "SystemDate,     Battery status, level, scale, health, voltage, temperature, technology, time since boot:\n";
+                String BatteryInfoLable = "BBK phone state log:\n";
                 FileWriter fileWriter = new FileWriter(mLogFile);
                 fileWriter.write(BatteryInfoLable);
                 fileWriter.flush();
                 fileWriter.close();
                 
                 if(EnableLog)
-                	Log.d(TAG," create file:/sdcard/bbkstatelog/!!\n");
+                	Log.d(TAG," create file:/sdcard/bbkstatelog/"+fileName+"\n");
      
     	 	} catch (IOException e1) {
                 // TODO Auto-generated catch block
                 e1.printStackTrace();
     	 	}
-    	 	mRun = true;
-    	 	bbkrun = new runThread();
-    	 	bbkrun.start();
+    	 		
+    	 		mRun = true;
+    	        bbkrun = new runThread();
+    	 		bbkrun.start();
     	 	
-            mIsRecording = true;
+    	 		mIsRecording = true;
+            
+   	 	 		mLogRecord.setText("stop");
              }
              else
              {
-            	 	 bbkrun.stop();
+            	     mRun = false;
                      mLogRecord.setText("start");
                      mIsRecording = false;
                      AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -279,48 +180,14 @@ public class StateRecordActivity extends ListActivity {
              }
 	
          }	
-
-
     }
     
-    private Handler mHandler = new Handler() {
-        @Override
-        public void handleMessage(Message msg) {
-            switch (msg.what) {
-                case EVENT_TICK:
-                    updateBatteryStats();
-                    sendEmptyMessageDelayed(EVENT_TICK, interval);
-                    break;
-            }
-        }
-
-                private void updateBatteryStats() {
-                        // TODO Auto-generated method stub
-                	mUptime = SystemClock.elapsedRealtime();
-                }
-    };
-
-    public Handler mLogHandler = new Handler() {
-        @Override
-        public void handleMessage(Message msg) {
-            switch (msg.what) {
-                case EVENT_LOG_RECORD:
-                        Log.i(TAG, "Record one time");
-                        WriteCurrentBatteryInfo();
-                        sendEmptyMessageDelayed(EVENT_LOG_RECORD, interval);
-                  break;
-            }
-        }
-
         private void WriteCurrentBatteryInfo() {
-                String LogContent = "";
+                String LogContent = "\n";
                 rightNow = Calendar.getInstance();
                 fmt = new SimpleDateFormat("yyyyMMddhhmmss");
                 sysDateTime = fmt.format(rightNow.getTime());
-                LogContent = LogContent + "[" + sysDateTime + "]" + " " + mStatus + ", " + mLevel + ", " + mScale
-                        + ", " + mHealth + ", " + mVoltage + ", " + mTemperature
-                        + ", " + mTechnology + ", " + mUptime + "\n";
-
+                LogContent = LogContent + "[" + sysDateTime + "]:"+ "\n" + mInfo;
 
                 try {
                         FileWriter fileWriter = new FileWriter(mLogFile, true);
@@ -336,9 +203,43 @@ public class StateRecordActivity extends ListActivity {
                                 e.printStackTrace();
                         }
 
-        		}
-
-        };
+  		};
+    
+  		
+  		@Override
+  		protected void onListItemClick(ListView l, View v, int position, long id)
+  		{
+  			super.onListItemClick(l, v, position, id);   
+  			boolean isClicked = l.isItemChecked(position); 
+  			switch(position)
+  			{
+  				case 0:
+  					bat_fg_enable = isClicked;
+  					if(EnableLog)
+  		             	Log.d(TAG,"bat_fg_enable\n");
+  					break;
+  				case 1:
+  					bat_log_enable = isClicked;
+  					if(EnableLog)
+  		             	Log.d(TAG,"bat_log_enable\n");
+  					break;
+  					
+  				case 2:
+  					android_process_enable = isClicked;
+  					if(EnableLog)
+  		             	Log.d(TAG,"android_process_enable\n");
+  					break;
+  					
+  				case 3:
+  					kernel_process_enable = isClicked;
+  					if(EnableLog)
+  		             	Log.d(TAG,"kernel_process_enable\n");
+  					break;		
+  			
+  			} 			
+  			 if(EnableLog)
+             	Log.d(TAG," list view pos "+ position +" is clicked "+ isClicked+ "!!\n");
+  		}
 
         private String getInfo(String cmd) {
             String result = null;
@@ -362,7 +263,7 @@ public class StateRecordActivity extends ListActivity {
         }
 
         private String mInfo;
-        private int mUpdateInterval = 1500; // 1.5 sec
+
         public Handler mUpdateHandler = new Handler() {
             @Override
             public void handleMessage(Message msg) {
@@ -370,6 +271,7 @@ public class StateRecordActivity extends ListActivity {
                 case EVENT_UPDATE:
                     Bundle b = msg.getData();
                     mInfo = new String(b.getString("INFO"));
+                    WriteCurrentBatteryInfo();
                     break;
                 }
             }
@@ -389,32 +291,60 @@ public class StateRecordActivity extends ListActivity {
                 while (mRun) {
                     StringBuilder text = new StringBuilder("");
                     String cmd = "";
-                    for (int i = 0; i < files.length; i++) {
+                    
+                    if(bat_fg_enable)
+                    {		
+                    	text.append("-----------------------------------------\n");
+                    	for (int i = 0; i < files.length; i++) {
                       
-                        cmd = cmdString + files[i][0];
-                        if (files[i][1].equalsIgnoreCase("mA")) {
-                            double f = 0.0f;
-                            try {
-                                f = Float.valueOf(getInfo(cmd)) / 10.0f;
-                            } catch (NumberFormatException e) {
-                                Log.e(TAG, "read file error " + files[i][0]);
-                            }
-                            text.append(String.format("%1$-28s:[ %2$-6s ]%3$s\n",
+                    		cmd = cmdString + files[i][0];
+                    		if (files[i][1].equalsIgnoreCase("mA")) {
+                    			double f = 0.0f;
+                    			try {
+                    				f = Float.valueOf(getInfo(cmd)) / 10.0f;
+                    			} catch (NumberFormatException e) {
+                    				Log.e(TAG, "read file error " + files[i][0]);
+                    			}
+                    			text.append(String.format("%1$-28s:[ %2$-6s ]%3$s\n",
                                     files[i][0], f, files[i][1]));
-                        } else {
-                            text.append(String.format("%1$-28s: [ %2$-6s ]%3$s\n",
+                    		} else {
+                    			text.append(String.format("%1$-28s: [ %2$-6s ]%3$s\n",
                                     files[i][0], getInfo(cmd), files[i][1]));
-                        }
+                    		}
+                    	}
                     }
                     
-                    for (int i = 0; i < files.length; i++) {
-                        cmd = PowerCmdString + files[i][0];
+                    if(bat_log_enable)
+                    {
+                    	text.append("-----------------------------------------\n");
+                    	for (int i = 0; i < bat_files.length; i++) {
+                    		cmd = PowerCmdString + bat_files[i][0];
                         
-                        text.append(String.format("%1$-28s: [ %2$-6s ]%3$s\n",
-                                    files[i][0], getInfo(cmd), files[i][1]));
-
+                    		text.append(String.format("%1$-28s: [ %2$-6s ]%3$s\n",
+                        		bat_files[i][0], getInfo(cmd), bat_files[i][1]));
+                    	}
                     }
 
+                    ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+                                                      
+                    if(android_process_enable)                    	
+                    {
+                    	text.append("-----------------------------------------\n");
+                    	List<RunningAppProcessInfo> apps = am.getRunningAppProcesses();
+                    	text.append( "Android Process name:\n");
+                    	for(RunningAppProcessInfo app:apps){
+                         text.append( app.processName + "\n");
+                    	}
+                    }
+                    
+                    if(kernel_process_enable)
+                    {
+                    	text.append("-----------------------------------------\n");
+                    	cmd = "ps";
+                		text.append(getInfo(cmd));
+                		text.append("\n");
+                    }
+                    
                     Bundle b = new Bundle();
                     b.putString("INFO", text.toString());
 
@@ -498,49 +428,4 @@ public class StateRecordActivity extends ListActivity {
                     }
             }
     }
-
-        static class ChipSupport {
-            // constants below.
-            public final static int MTK_UNKNOWN_SUPPORT = 0;
-            public final static int MTK_6573_SUPPORT = 1;
-            public final static int MTK_6516_SUPPORT = 2;
-            public final static int MTK_6575_SUPPORT = 4;
-            public final static int MTK_6577_SUPPORT = 8;
-
-            public static native int GetChip();
-
-            public static String GetChipString() {
-                if (GetChip() == MTK_6573_SUPPORT) {
-                    return "Chip 6573 ";
-                } else if (GetChip() == MTK_6516_SUPPORT) {
-                    return "Chip 6516 ";
-                } else if (GetChip() == MTK_6575_SUPPORT) {
-                    return "Chip 6575 ";
-                } else if (GetChip() == MTK_6577_SUPPORT) {
-                    return "Chip 6577 ";
-                } else {
-                    return "Chip unknown ";
-                }
-            }
-
-            public final static int MTK_FM_SUPPORT = 0;
-            public final static int MTK_FM_TX_SUPPORT = 1;
-            public final static int MTK_RADIO_SUPPORT = 2;
-            public final static int MTK_AGPS_APP = 3;
-            public final static int MTK_GPS_SUPPORT = 4;
-            public final static int HAVE_MATV_FEATURE = 5;
-            public final static int MTK_BT_SUPPORT = 6;
-            public final static int MTK_WLAN_SUPPORT = 7;
-            public final static int MTK_TTY_SUPPORT = 8;
-
-            // FEATURE SUPPORTED
-            public static native boolean IsFeatureSupported(int feature_id);
-
-            static {
-                System.loadLibrary("em_chip_support_jni");
-
-            }
-        }
-
-
 }
