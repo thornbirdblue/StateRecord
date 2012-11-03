@@ -15,10 +15,19 @@ import android.app.ActivityManager.RunningAppProcessInfo;
 import android.app.ActivityManager.RunningTaskInfo;
 import android.app.AlertDialog;
 import android.app.ListActivity;
+import android.bluetooth.BluetoothAdapter;
+import android.content.Context;
+import android.hardware.Sensor;
+import android.hardware.SensorManager;
+import android.location.LocationManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
+import android.os.PowerManager;
 import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
@@ -30,12 +39,13 @@ public class StateRecordActivity extends ListActivity {
 	private final String TAG="BbkStateRecord";
 	private static final boolean EnableLog=true;
 	
-	private final static String[] attr = {"Battery FG","Battery log","Android Process","kernel process"};
+	private final static String[] attr = {"Battery FG","Battery log","Android Process","kernel process","Devices State"};
 	
-	private boolean bat_fg_enable = false;
-	private boolean bat_log_enable = false;
-	private boolean android_process_enable = false;
-	private boolean kernel_process_enable = false;
+	private static boolean bat_fg_enable = false;
+	private static boolean bat_log_enable = false;
+	private static boolean android_process_enable = false;
+	private static boolean kernel_process_enable = false;
+	private static boolean devices_state_enable = false;
 	
 	private static final int EVENT_UPDATE = 1;
 	    
@@ -49,14 +59,14 @@ public class StateRecordActivity extends ListActivity {
     SimpleDateFormat fmt;
     String sysDateTime;
  
-    private boolean mIsRecording = false;
-    private boolean mRun = false;
+    private static boolean mIsRecording = false;
+    private static boolean mRun = false;
 
     private String cmdString = null;
     private String PowerCmdString = null;
     
     private Thread bbkrun;
-    private int mUpdateInterval = 10000; // 10 sec
+    private int mUpdateInterval = 300000; // 5 min
     
 	/** Called when the activity is first created. */
     @Override
@@ -92,13 +102,46 @@ public class StateRecordActivity extends ListActivity {
 
         }
 
-        cmdString = "cat /sys/devices/platform/mt6577-battery/";
+        cmdString = "cat /sys/devices/platform/mt6575-battery/";
         PowerCmdString = "cat /sys/class/power_supply/battery/";   
        
        if(EnableLog)
         	Log.d(TAG,"onCreate!\n");
     }
   
+    @Override
+    public void onStart(){
+    	super.onStart();
+    	if(mRun)
+    	{
+    		mLogRecord.setText("stop");
+    	}
+    	
+    	ListView mlistView = getListView();
+    	
+    	if(bat_fg_enable)
+    	{
+    		mlistView.setItemChecked(0, true);
+    	}
+    	if(bat_log_enable)
+    	{
+    		mlistView.setItemChecked(1, true);
+    	}
+    	if(android_process_enable)
+    	{
+    		mlistView.setItemChecked(2, true);
+    	}
+    	if(kernel_process_enable)
+    	{
+    		mlistView.setItemChecked(3, true);
+    	}
+    	if(devices_state_enable)
+    	{
+    		mlistView.setItemChecked(4, true);
+    	}
+    	
+    }
+    
     public void onButtonClick(View arg0) {
     	 if(arg0.getId() == mLogRecord.getId())
          {
@@ -187,7 +230,7 @@ public class StateRecordActivity extends ListActivity {
                 rightNow = Calendar.getInstance();
                 fmt = new SimpleDateFormat("yyyyMMddhhmmss");
                 sysDateTime = fmt.format(rightNow.getTime());
-                LogContent = LogContent + "[" + sysDateTime + "]:"+ "\n" + mInfo;
+                LogContent = LogContent + "\n" + "\n" + "[" + sysDateTime + "]:"+ "\n" + mInfo;
 
                 try {
                         FileWriter fileWriter = new FileWriter(mLogFile, true);
@@ -234,7 +277,13 @@ public class StateRecordActivity extends ListActivity {
   					kernel_process_enable = isClicked;
   					if(EnableLog)
   		             	Log.d(TAG,"kernel_process_enable\n");
-  					break;		
+  					break;	
+  					
+  				case 4:
+  					devices_state_enable = isClicked;
+  					if(EnableLog)
+  		             	Log.d(TAG,"devices_state_enable\n");
+  					break;	
   			
   			} 			
   			 if(EnableLog)
@@ -343,6 +392,120 @@ public class StateRecordActivity extends ListActivity {
                     	cmd = "ps";
                 		text.append(getInfo(cmd));
                 		text.append("\n");
+                    }
+                    
+                    if(devices_state_enable)
+                    {
+                    	text.append("-----------------------------------------\n");
+                    	
+                    	/** wifi state */
+                    	WifiManager wifiManager = (WifiManager)getSystemService(Context.WIFI_SERVICE);
+                    	if(wifiManager.isWifiEnabled())
+                    		text.append("WIFI: on  ");          		
+                    	else
+                    		text.append("WIFI: off  ");
+                    	
+                    	/** bt state */
+                    	BluetoothAdapter bluetooth = BluetoothAdapter.getDefaultAdapter();
+                    	if(bluetooth != null)
+                    	{
+                    		if(bluetooth.isEnabled())
+                        		text.append("BT: on  ");          		
+                        	else
+                        		text.append("BT: off  ");
+                    	}
+                    	
+                    	/** GPS state */
+                    	LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);  
+                    	boolean GPS_status = lm.isProviderEnabled(LocationManager.GPS_PROVIDER);  
+                    	if(GPS_status){  
+                    		text.append("GPS: on  ");  
+                           }else{  
+                        	text.append("GPS off  ");  
+                           }  
+                    	
+                    	/** net state */
+                    	ConnectivityManager conManager = (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
+                        NetworkInfo network = conManager.getActiveNetworkInfo();
+                        if(network != null)
+                        {
+                        	boolean bisConnFlag = conManager.getActiveNetworkInfo().isAvailable();
+                            if(bisConnFlag){  
+                        		text.append("NET: on  ");  
+                               }else{  
+                            	text.append("NET: off  ");  
+                               }  
+                        }
+                        else
+                        	text.append("NET: off  ");  
+                    	
+                    	text.append("\n");
+                    	
+                    	/** Screen state */
+                    	PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);   
+                    	boolean screen = pm.isScreenOn();
+                    	if(screen)
+                    		text.append("Screen: on  ");          		
+                    	else
+                    		text.append("Screen: off  ");
+                    	                    	
+                    	/** TF state */
+                    	boolean sdCardExist = Environment.getExternalStorageState().equals(android.os.Environment.MEDIA_MOUNTED);
+                    	if(sdCardExist)
+                    		text.append("TF: on  ");          		
+                    	else
+                    		text.append("TF: off  ");
+                    	              
+                        text.append("\n\n");
+                        
+                        /** sensor state */
+/*                    	SensorManager sm = (SensorManager)getSystemService(Context.SENSOR_SERVICE);
+                    	
+                    	List<Sensor> sensors = sm.getSensorList(Sensor.TYPE_ALL);
+                    	for(Sensor s:sensors)
+                    	{       
+                    		 switch (s.getType()) {  
+                             case Sensor.TYPE_ACCELEROMETER:  
+                            	 text.append("accelerometer: on\n");  
+                                 break;  
+                             case Sensor.TYPE_GRAVITY:  
+                            	 text.append("gravity API 9: on\n");  
+                                 break;  
+                             case Sensor.TYPE_GYROSCOPE:  
+                            	 text.append("gyroscope: on\n");  
+                                 break;  
+                             case Sensor.TYPE_LIGHT:  
+                            	 text.append("light: on\n");  
+                                 break;  
+                             case Sensor.TYPE_LINEAR_ACCELERATION:  
+                            	 text.append("LINEAR_ACCELERATION API 9: on\n");  
+                                 break;  
+                             case Sensor.TYPE_MAGNETIC_FIELD:  
+                            	 text.append("magnetic field: on\n");  
+                                 break;  
+                             case Sensor.TYPE_ORIENTATION:  
+                            	 text.append("orientation: on\n");  
+                                 break;  
+                             case Sensor.TYPE_PRESSURE:  
+                            	 text.append("pressure: on\n");  
+                                 break;  
+                             case Sensor.TYPE_PROXIMITY:  
+                            	 text.append("proximity: on\n");  
+                                 break;  
+                             case Sensor.TYPE_ROTATION_VECTOR:  
+                            	 text.append("ROTATION: on\n");  
+                                 break;  
+                             case Sensor.TYPE_TEMPERATURE:  
+                            	 text.append("temperature: on\n");  
+                                 break;  
+                             default:  
+                            	 text.append("unknow sensor!\n");  
+                                 break;  
+                             }  
+                    	}
+                    	
+                    	text.append("\n");
+*/
                     }
                     
                     Bundle b = new Bundle();
