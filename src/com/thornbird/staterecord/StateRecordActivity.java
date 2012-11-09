@@ -28,6 +28,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
@@ -459,6 +460,23 @@ public class StateRecordActivity extends ListActivity {
                         text.append("\n\n");
                         
                         /** sensor state */
+                        if(Settings.System.getInt(getContentResolver(),Settings.System.ACCELEROMETER_ROTATION, 0) == 1)
+                        {
+                        	text.append("ACCELEROMETER: on  ");
+                        }
+                        else
+                        {
+                        	text.append("ACCELEROMETER: off  ");
+                        }
+                        if(Settings.System.getInt(getContentResolver(),Settings.System.SCREEN_BRIGHTNESS_MODE, 0) == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC)
+                        {
+                        	text.append("AUTO_LIGHT: on  ");
+                        }
+                        else
+                        {
+                        	text.append("AUTO_LIGHT: off  ");
+                        }
+                        
 /*                    	SensorManager sm = (SensorManager)getSystemService(Context.SENSOR_SERVICE);
                     	
                     	List<Sensor> sensors = sm.getSensorList(Sensor.TYPE_ALL);
