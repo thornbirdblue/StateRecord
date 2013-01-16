@@ -103,7 +103,7 @@ public class StateRecordActivity extends ListActivity {
 
         }
 
-        cmdString = "cat /sys/devices/platform/mt6575-battery/";
+        cmdString = "cat /sys/devices/platform/mt6577-battery/";
         PowerCmdString = "cat /sys/class/power_supply/battery/";   
        
        if(EnableLog)
@@ -143,7 +143,8 @@ public class StateRecordActivity extends ListActivity {
     	
     }
     
-    public void onButtonClick(View arg0) {
+    @SuppressWarnings("deprecation")
+	public void onButtonClick(View arg0) {
     	 if(arg0.getId() == mLogRecord.getId())
          {
 			if(false == mIsRecording)
